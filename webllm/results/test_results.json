@@ -1,0 +1,9 @@
+{
+  "test_id": "test1",
+  "prompt": "Explain the concept of quantum computing in simple terms.",
+  "response": "Error: Page did not load correctly: Message: \nStacktrace:\n0   chromedriver                        0x000000010071ee10 cxxbridge1$str$ptr + 2817040\n1   chromedriver                        0x00000001007170ac cxxbridge1$str$ptr + 2784940\n2   chromedriver                        0x000000010025e8d8 cxxbridge1$string$len + 93028\n3   chromedriver                        0x00000001002a56a0 cxxbridge1$string$len + 383276\n4   chromedriver                        0x00000001002e67b8 cxxbridge1$string$len + 649796\n5   chromedriver                        0x0000000100299a80 cxxbridge1$string$len + 335116\n6   chromedriver                        0x00000001006e3c98 cxxbridge1$str$ptr + 2575000\n7   chromedriver                        0x00000001006e6f64 cxxbridge1$str$ptr + 2588004\n8   chromedriver                        0x00000001006c3a20 cxxbridge1$str$ptr + 2443296\n9   chromedriver                        0x00000001006e77e0 cxxbridge1$str$ptr + 2590176\n10  chromedriver                        0x00000001006b4b14 cxxbridge1$str$ptr + 2382100\n11  chromedriver                        0x00000001007079c4 cxxbridge1$str$ptr + 2721732\n12  chromedriver                        0x0000000100707b50 cxxbridge1$str$ptr + 2722128\n13  chromedriver                        0x0000000100716cf8 cxxbridge1$str$ptr + 2783992\n14  libsystem_pthread.dylib             0x00000001920d606c _pthread_start + 148\n15  libsystem_pthread.dylib             0x00000001920d0e2c thread_start + 8\n",
+  "latency_ms": 0,
+  "tokens_per_second": 0,
+  "debug_mode": false,
+  "visible_mode": false
+}

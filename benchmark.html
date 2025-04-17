@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebLLM Benchmark</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .file-upload {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 15px;
+    }
+    label {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    button {
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    #results {
+      white-space: pre-wrap;
+      font-family: monospace;
+      background-color: #f5f5f5;
+      padding: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .status {
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 4px;
+    }
+    .success {
+      background-color: #dff0d8;
+      border: 1px solid #d6e9c6;
+      color: #3c763d;
+    }
+    .error {
+      background-color: #f2dede;
+      border: 1px solid #ebccd1;
+      color: #a94442;
+    }
+    .loading {
+      background-color: #d9edf7;
+      border: 1px solid #bce8f1;
+      color: #31708f;
+    }
+    .progress-bar-container {
+      width: 100%;
+      background-color: #f3f3f3;
+      border-radius: 3px;
+      margin-top: 10px;
+    }
+    .progress-bar {
+      height: 20px;
+      background-color: #4CAF50;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    #debug-log {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>WebLLM Benchmark</h1>
+    
+    <div class="section">
+      <h2>Upload Model</h2>
+      <div class="file-upload">
+        <div class="input-group">
+          <label for="model-file">Upload Local Model File:</label>
+          <input type="file" id="model-file" accept=".bin,.json,.wasm">
+        </div>
+        <div id="model-status" class="status loading">Ready to load model</div>
+        <div class="progress-bar-container">
+          <div id="model-progress" class="progress-bar"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>Benchmark Configuration</h2>
+      <div class="input-group">
+        <label for="prompt">Prompt:</label>
+        <textarea id="prompt" rows="3" disabled>Loading test parameters...</textarea>
+      </div>
+      <div class="input-group">
+        <label for="max-tokens">Max Tokens:</label>
+        <input type="number" id="max-tokens" value="100" disabled>
+      </div>
+      <div class="input-group">
+        <label for="temperature">Temperature:</label>
+        <input type="number" id="temperature" value="0.0" step="0.1" min="0" max="2" disabled>
+      </div>
+      <button id="run-benchmark" disabled>Run Benchmark</button>
+    </div>
+    
+    <div class="section">
+      <h2>Results</h2>
+      <div id="status" class="status">Waiting for benchmark to start...</div>
+      <div id="results"></div>
+    </div>
+
+    <div class="section">
+      <h2>Debug Log</h2>
+      <div id="debug-log"></div>
+    </div>
+  </div>
+
+  <!-- Import WebLLM library from CDN -->
+  <script type="module">
+    import { CreateMLCEngine } from 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm/dist/mlc-web-llm.js';
+    
+    // Add debug logging function
+    function debug(message) {
+      const logElement = document.getElementById('debug-log');
+      const timestamp = new Date().toISOString().substr(11, 8); // HH:MM:SS
+      logElement.innerHTML += `[${timestamp}] ${message}<br>`;
+      logElement.scrollTop = logElement.scrollHeight;
+      console.log(`[${timestamp}] ${message}`);
+    }
+
+    // Function to get URL parameters
+    function getUrlParams() {
+      const params = new URLSearchParams(window.location.search);
+      const testFile = params.get('test_file');
+      const resultFile = params.get('result_file');
+      debug(`URL params: test_file=${testFile}, result_file=${resultFile}`);
+      return { testFile, resultFile };
+    }
+    
+    // Function to update UI status
+    function updateStatus(message, type = 'loading') {
+      const statusElement = document.getElementById('status');
+      statusElement.textContent = message;
+      statusElement.className = `status ${type}`;
+      debug(`Status: ${message} (${type})`);
+    }
+    
+    // Function to update model loading progress
+    function updateModelProgress(progress) {
+      const progressBar = document.getElementById('model-progress');
+      const progressPercent = Math.round(progress * 100);
+      progressBar.style.width = `${progressPercent}%`;
+      
+      const statusElement = document.getElementById('model-status');
+      statusElement.textContent = `Loading model: ${progressPercent}%`;
+      
+      if (progressPercent % 10 === 0) { // Log every 10%
+        debug(`Model loading progress: ${progressPercent}%`);
+      }
+    }
+    
+    // Function to save results to a file
+    async function saveResultsToFile(results, resultFile) {
+      if (!resultFile) {
+        debug('No result file specified, not saving results');
+        return false;
+      }
+      
+      try {
+        debug(`Saving results to file: ${resultFile}`);
+        
+        // Use fetch with 'file:' protocol to write to the file
+        const blob = new Blob([JSON.stringify(results)], { type: 'application/json' });
+        
+        // Create a download link and trigger it
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = resultFile.split('/').pop();
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        debug('Results saved successfully');
+        return true;
+      } catch (error) {
+        debug(`Error saving results: ${error.message}`);
+        console.error('Error saving results:', error);
+        return false;
+      }
+    }
+    
+    // Function to load test parameters from file
+    async function loadTestParameters() {
+      const { testFile } = getUrlParams();
+      
+      if (!testFile) {
+        updateStatus('No test file specified in URL', 'error');
+        return null;
+      }
+      
+      debug(`Attempting to load test file: ${testFile}`);
+      
+      try {
+        // First try with the file:// protocol
+        try {
+          debug('Trying to load with file:// protocol');
+          const response = await fetch(`file://${testFile}`);
+          if (response.ok) {
+            const testParameters = await response.json();
+            debug('Successfully loaded test file with file:// protocol');
+            return processTestParameters(testParameters);
+          }
+        } catch (fileError) {
+          debug(`Error loading with file:// protocol: ${fileError.message}`);
+        }
+        
+        // If that fails, try with http:// protocol (relative to server)
+        try {
+          debug('Trying to load with http:// protocol (server relative)');
+          const fileName = testFile.split('/').pop();
+          const response = await fetch(`${fileName}`);
+          if (response.ok) {
+            const testParameters = await response.json();
+            debug('Successfully loaded test file from server');
+            return processTestParameters(testParameters);
+          }
+        } catch (httpError) {
+          debug(`Error loading from server: ${httpError.message}`);
+        }
+        
+        // If all loading attempts fail, use fallback
+        debug('All loading attempts failed, using fallback test');
+        return useFallbackTest();
+        
+      } catch (error) {
+        debug(`General error loading test parameters: ${error.message}`);
+        return useFallbackTest();
+      }
+    }
+    
+    // Process loaded test parameters
+    function processTestParameters(testParameters) {
+      debug(`Test parameters loaded: ${JSON.stringify(testParameters)}`);
+      
+      // Update UI with test parameters
+      document.getElementById('prompt').value = testParameters.prompt;
+      document.getElementById('max-tokens').value = testParameters.max_tokens;
+      document.getElementById('temperature').value = testParameters.temperature;
+      
+      // Enable benchmark button when test is loaded
+      document.getElementById('run-benchmark').disabled = false;
+      
+      updateStatus('Test parameters loaded successfully', 'success');
+      return testParameters;
+    }
+    
+    // Use fallback test parameters
+    function useFallbackTest() {
+      const fallbackTest = {
+        prompt: "What is the capital of France?",
+        max_tokens: 256,
+        temperature: 0.0,
+        test_id: "fallback_test"
+      };
+      
+      debug(`Using fallback test parameters: ${JSON.stringify(fallbackTest)}`);
+      
+      // Update UI with fallback test parameters
+      document.getElementById('prompt').value = fallbackTest.prompt;
+      document.getElementById('max-tokens').value = fallbackTest.max_tokens;
+      document.getElementById('temperature').value = fallbackTest.temperature;
+      
+      // Enable benchmark button
+      document.getElementById('run-benchmark').disabled = false;
+      
+      updateStatus('Using fallback test parameters', 'loading');
+      return fallbackTest;
+    }
+    
+    // Function to run inference with WebLLM
+    async function runBenchmark(test) {
+      updateStatus('Initializing WebLLM engine...', 'loading');
+      
+      try {
+        // Get the uploaded model file
+        const modelFileInput = document.getElementById('model-file');
+        if (!modelFileInput.files || modelFileInput.files.length === 0) {
+          throw new Error('No model file selected');
+        }
+        
+        const modelFile = modelFileInput.files[0];
+        debug(`Selected model file: ${modelFile.name} (${formatFileSize(modelFile.size)})`);
+        
+        // Create model configuration with the local file
+        const chatOpts = {
+          temperature: parseFloat(test.temperature),
+          max_gen_len: parseInt(test.max_tokens)
+        };
+        
+        debug(`Chat options: ${JSON.stringify(chatOpts)}`);
+        
+        const startTime = performance.now();
+        
+        debug('Creating WebLLM engine with local model...');
+        // Initialize WebLLM engine with the local model
+        const engine = await CreateMLCEngine("local-model", {
+          model_local: {
+            model_file: modelFile
+          },
+          // Add progress callback to monitor model loading
+          progress_callback: (report) => {
+            debug(`Loading progress: ${report.progress}, phase: ${report.text}`);
+            updateModelProgress(report.progress);
+          }
+        }, chatOpts);
+        
+        debug('WebLLM engine created successfully');
+        
+        // Run inference
+        updateStatus('Running inference...', 'loading');
+        document.getElementById('results').textContent = '';
+        
+        // Keep track of token count and generated text
+        let generatedText = '';
+        let tokenCount = 0;
+        let firstTokenTime = null;
+        
+        debug('Resetting chat session...');
+        // Reset the chat session
+        await engine.resetChat();
+        
+        debug(`Starting generation with prompt: "${test.prompt.substring(0, 50)}..."`);
+        // Start generation with streaming
+        const response = await engine.chat(test.prompt, (chunk) => {
+          // Measure time of first token
+          if (tokenCount === 0) {
+            firstTokenTime = performance.now();
+            debug(`First token received after ${firstTokenTime - startTime}ms`);
+          }
+          
+          // Append the new chunk to the generated text
+          generatedText += chunk;
+          tokenCount++;
+          
+          if (tokenCount % 10 === 0) {
+            debug(`Generated ${tokenCount} tokens so far`);
+          }
+          
+          // Update the UI with the current generated text
+          document.getElementById('results').textContent = generatedText;
+        });
+        
+        const endTime = performance.now();
+        
+        // Calculate metrics
+        const totalLatencyMs = endTime - startTime;
+        const tokensPerSecond = tokenCount / ((endTime - firstTokenTime) / 1000);
+        
+        // Log metrics
+        debug(`Benchmark completed with ${tokenCount} tokens`);
+        debug(`Total latency: ${totalLatencyMs.toFixed(2)}ms`);
+        debug(`Tokens per second: ${tokensPerSecond.toFixed(2)}`);
+        
+        // Format the benchmark result
+        const benchmarkResult = {
+          test_id: test.test_id,
+          prompt: test.prompt,
+          response: generatedText,
+          latency_ms: totalLatencyMs,
+          tokens_per_second: tokensPerSecond,
+          success: true
+        };
+        
+        // Save results to file
+        const { resultFile } = getUrlParams();
+        if (resultFile) {
+          await saveResultsToFile(benchmarkResult, resultFile);
+        }
+        
+        updateStatus(`Benchmark completed: Generated ${tokenCount} tokens in ${totalLatencyMs.toFixed(2)}ms (${tokensPerSecond.toFixed(2)} tokens/sec)`, 'success');
+        
+        return benchmarkResult;
+        
+      } catch (error) {
+        console.error('Benchmark error:', error);
+        debug(`ERROR: ${error.message}`);
+        debug(`Stack trace: ${error.stack}`);
+        updateStatus(`Benchmark error: ${error.message}`, 'error');
+        
+        // Create error result
+        const errorResult = {
+          test_id: test.test_id,
+          prompt: test.prompt,
+          response: `Error: ${error.message}`,
+          latency_ms: 0,
+          tokens_per_second: 0,
+          success: false
+        };
+        
+        // Save error results to file
+        const { resultFile } = getUrlParams();
+        if (resultFile) {
+          await saveResultsToFile(errorResult, resultFile);
+        }
+        
+        return errorResult;
+      }
+    }
+    
+    // Helper function to format file size
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' bytes';
+      else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+      else return (bytes / 1048576).toFixed(2) + ' MB';
+    }
+    
+    // Main function to initialize the benchmark
+    async function initBenchmark() {
+      debug('Initializing WebLLM benchmark');
+      try {
+        // Check if WebGPU is available
+        if ('gpu' in navigator) {
+          debug('WebGPU is available in this browser');
+        } else {
+          debug('WARNING: WebGPU is not available in this browser. Performance may be limited.');
+        }
+        
+        // Load test parameters
+        const testParameters = await loadTestParameters();
+        if (!testParameters) return;
+        
+        // Setup model file upload handling
+        const modelFileInput = document.getElementById('model-file');
+        modelFileInput.addEventListener('change', () => {
+          const file = modelFileInput.files[0];
+          if (file) {
+            debug(`Model file selected: ${file.name} (${formatFileSize(file.size)})`);
+            document.getElementById('model-status').textContent = `Selected model: ${file.name}`;
+            document.getElementById('run-benchmark').disabled = false;
+          }
+        });
+        
+        // Setup benchmark button click handler
+        const runBenchmarkButton = document.getElementById('run-benchmark');
+        runBenchmarkButton.addEventListener('click', async () => {
+          debug('Run benchmark button clicked');
+          runBenchmarkButton.disabled = true;
+          await runBenchmark(testParameters);
+          runBenchmarkButton.disabled = false;
+        });
+        
+      } catch (error) {
+        debug(`ERROR during initialization: ${error.message}`);
+        console.error('Initialization error:', error);
+        updateStatus(`Initialization error: ${error.message}`, 'error');
+      }
+    }
+    
+    // Initialize when DOM is loaded
+    document.addEventListener('DOMContentLoaded', initBenchmark);
+  </script>
+</body>
+</html> 

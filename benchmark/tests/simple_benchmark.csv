@@ -1,0 +1,11 @@
+id,prompt,max_tokens,temperature,expected_class,notes
+1,"What is the capital of France?",256,0.0,factual,"Simple factual question"
+2,"Explain quantum computing in simple terms",512,0.0,explanation,"Explanation request"
+3,"Write a short poem about artificial intelligence",256,0.7,creative,"Creative task"
+4,"Solve the equation: 3x + 5 = 20",256,0.0,problem_solving,"Mathematical problem"
+5,"What are the pros and cons of remote work?",512,0.0,analysis,"Analytical question"
+6,"Translate 'Hello, how are you?' to Spanish",128,0.0,translation,"Translation task"
+7,"What is the meaning of life?",256,0.0,philosophical,"Philosophical question"
+8,"Summarize the history of the internet in 3 sentences",256,0.0,summarization,"Summarization task"
+9,"Write a function in Python to check if a string is a palindrome",512,0.0,code,"Coding task"
+10,"Is climate change real? Provide evidence for your answer",512,0.0,evidence_based,"Evidence-based reasoning" 
