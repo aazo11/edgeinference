@@ -35,4 +35,12 @@ benchmark/comparison_results/
 .idea/
 .vscode/
 *.swp
-*.swo 
+*.swo
+
+# Environment variables
+.env
+**/.env
+
+# Environment variables
+.env
+**/.env 
