@@ -105,6 +105,31 @@ You can specify a particular model by setting the environment variable:
 OLLAMA_MODEL=llama2:7b python benchmark/benchmark_runner.py --implementation ollama
 ```
 
+#### Llama.cpp Benchmarks
+
+Option 1: Let the benchmark script start the llama.cpp server:
+
+```bash
+python benchmark/benchmark_runner.py --implementation llamacpp
+```
+
+The benchmark will automatically start a llama.cpp server with the default model (bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF).
+
+You can specify a different model:
+```bash
+LLAMACPP_MODEL=/path/to/your/model.gguf python benchmark/benchmark_runner.py --implementation llamacpp
+```
+
+Option 2: Start the server manually:
+
+```bash
+# Start server manually
+llama-server -m /path/to/your/model.gguf --host 0.0.0.0 --port 8080
+
+# Run benchmark
+python benchmark/benchmark_runner.py --implementation llamacpp
+```
+
 #### OpenAI Benchmarks
 
 Run the benchmark using OpenAI's API:

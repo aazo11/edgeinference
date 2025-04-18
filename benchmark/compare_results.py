@@ -20,16 +20,6 @@ def get_json_files_from_directory(directory: str) -> List[str]:
     json_files = glob.glob(os.path.join(directory, '*.json'))
     return json_files
 
-def calculate_accuracy(results: List[Dict[str, Any]]) -> float:
-    """
-    Calculate a simple accuracy score based on successful responses.
-    
-    This is a placeholder implementation - in a real-world scenario,
-    you would want to use a more sophisticated evaluation method.
-    """
-    successful_responses = sum(1 for result in results if result['success'] and result['response'])
-    return successful_responses / len(results) if results else 0
-
 def compare_results(results_files: List[str] = None, results_dir: str = None, output_dir: str = None):
     """
     Compare benchmark results from different implementations.
@@ -115,7 +105,8 @@ def compare_results(results_files: List[str] = None, results_dir: str = None, ou
         'prompt': [],
         'latency_ms': [],
         'tokens_per_second': [],
-        'success': []
+        'time_to_first_token': [],
+        # 'success': []
     }
     
     for results in all_results:
@@ -125,20 +116,36 @@ def compare_results(results_files: List[str] = None, results_dir: str = None, ou
             comparison_data['prompt'].append(result['prompt'])
             comparison_data['latency_ms'].append(result['latency_ms'])
             comparison_data['tokens_per_second'].append(result['tokens_per_second'])
-            comparison_data['success'].append(1 if result['success'] and result['response'] else 0)
+            # Add time_to_first_token data, default to None if not available
+            time_to_first_token = result.get('time_to_first_token', None)
+            comparison_data['time_to_first_token'].append(time_to_first_token)
+            # comparison_data['success'].append(1 if result['success'] and result['response'] else 0)
     
     # Create DataFrame for easier analysis
     df = pd.DataFrame(comparison_data)
     
     # Calculate overall accuracy for each implementation
-    accuracy_data = df.groupby('implementation')['success'].mean()
+    # accuracy_data = df.groupby('implementation')['success'].mean()
     
-    # Calculate average latency for each implementation
-    latency_data = df.groupby('implementation')['latency_ms'].mean()
+    # Calculate median latency for each implementation (instead of average)
+    latency_data = df.groupby('implementation')['latency_ms'].median()
     
-    # Calculate average tokens per second for each implementation
-    tps_data = df.groupby('implementation')['tokens_per_second'].mean()
+    # Calculate median tokens per second for each implementation (instead of average)
+    tps_data = df.groupby('implementation')['tokens_per_second'].median()
     
+    # Calculate TTFT metrics: median and max time to first token for each implementation
+    # Filter out None values
+    ttft_df = df[df['time_to_first_token'].notna()]
+    if not ttft_df.empty:
+        # Use median instead of mean
+        avg_ttft_data = ttft_df.groupby('implementation')['time_to_first_token'].median()
+        max_ttft_data = ttft_df.groupby('implementation')['time_to_first_token'].max()
+    else:
+        avg_ttft_data = pd.Series(dtype='float64')
+        max_ttft_data = pd.Series(dtype='float64')
+        print("Warning: No time to first token data found in results")
+    
+    """
     # Generate accuracy bar chart by test_id and implementation
     plt.figure(figsize=(14, 8))
     
@@ -177,6 +184,10 @@ def compare_results(results_files: List[str] = None, results_dir: str = None, ou
     plt.tight_layout()
     plt.savefig(accuracy_chart_path)
     plt.close()
+    """
+    
+    # Create a colormap for the implementations
+    colors = cm.get_cmap('tab10', len(implementations))
     
     # Generate latency bar chart with distinct colors
     plt.figure(figsize=(12, 6))
@@ -189,7 +200,7 @@ def compare_results(results_files: List[str] = None, results_dir: str = None, ou
         color=[colors(i) for i in range(len(latency_data))]
     )
     
-    plt.title('Average Latency by Implementation', fontsize=16)
+    plt.title('Median Latency by Implementation', fontsize=16)
     plt.xlabel('Implementation', fontsize=14)
     plt.ylabel('Latency (ms)', fontsize=14)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
@@ -218,7 +229,7 @@ def compare_results(results_files: List[str] = None, results_dir: str = None, ou
         color=[colors(i) for i in range(len(tps_data))]
     )
     
-    plt.title('Average Tokens per Second by Implementation', fontsize=16)
+    plt.title('Median Tokens per Second by Implementation', fontsize=16)
     plt.xlabel('Implementation', fontsize=14)
     plt.ylabel('Tokens per Second', fontsize=14)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
@@ -236,12 +247,80 @@ def compare_results(results_files: List[str] = None, results_dir: str = None, ou
     plt.savefig(tps_chart_path)
     plt.close()
     
+    # Generate time to first token charts if data is available
+    ttft_chart_path = None
+    max_ttft_chart_path = None
+    
+    if not avg_ttft_data.empty:
+        # Generate average TTFT bar chart
+        plt.figure(figsize=(12, 6))
+        
+        # Create color-mapped bars for each implementation
+        bars = plt.bar(
+            avg_ttft_data.index, 
+            avg_ttft_data.values, 
+            alpha=0.8,
+            color=[colors(i) for i in range(len(avg_ttft_data))]
+        )
+        
+        plt.title('Median Time to First Token by Implementation', fontsize=16)
+        plt.xlabel('Implementation', fontsize=14)
+        plt.ylabel('Time (ms)', fontsize=14)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        
+        # Add value labels on top of bars
+        for bar in bars:
+            height = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2., height + 5,
+                    f'{height:.1f}',
+                    ha='center', va='bottom', rotation=0)
+        
+        # Save the chart
+        ttft_chart_path = os.path.join(output_dir, 'ttft_comparison.png')
+        plt.tight_layout()
+        plt.savefig(ttft_chart_path)
+        plt.close()
+        
+        # Generate max TTFT bar chart
+        plt.figure(figsize=(12, 6))
+        
+        # Create color-mapped bars for each implementation
+        bars = plt.bar(
+            max_ttft_data.index, 
+            max_ttft_data.values, 
+            alpha=0.8,
+            color=[colors(i) for i in range(len(max_ttft_data))]
+        )
+        
+        plt.title('Maximum Time to First Token by Implementation', fontsize=16)
+        plt.xlabel('Implementation', fontsize=14)
+        plt.ylabel('Time (ms)', fontsize=14)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        
+        # Add value labels on top of bars
+        for bar in bars:
+            height = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2., height + 5,
+                    f'{height:.1f}',
+                    ha='center', va='bottom', rotation=0)
+        
+        # Save the chart
+        max_ttft_chart_path = os.path.join(output_dir, 'max_ttft_comparison.png')
+        plt.tight_layout()
+        plt.savefig(max_ttft_chart_path)
+        plt.close()
+    
     # Generate summary report
     summary = {
-        'accuracy': accuracy_data.to_dict(),
-        'avg_latency_ms': latency_data.to_dict(),
-        'avg_tokens_per_second': tps_data.to_dict()
+        # 'accuracy': accuracy_data.to_dict(),
+        'median_latency_ms': latency_data.to_dict(),
+        'median_tokens_per_second': tps_data.to_dict()
     }
+    
+    # Add TTFT data to summary if available
+    if not avg_ttft_data.empty:
+        summary['median_time_to_first_token'] = avg_ttft_data.to_dict()
+        summary['max_time_to_first_token'] = max_ttft_data.to_dict()
     
     # Save summary to JSON
     summary_path = os.path.join(output_dir, 'comparison_summary.json')
@@ -250,22 +329,41 @@ def compare_results(results_files: List[str] = None, results_dir: str = None, ou
     
     # Print summary
     print("\n===== Benchmark Comparison Summary =====")
+    
+    """
     print("\nAccuracy:")
     for impl, acc in accuracy_data.items():
         print(f"  {impl}: {acc:.2%}")
+    """
     
-    print("\nAverage Latency (ms):")
+    print("\nMedian Latency (ms):")
     for impl, lat in latency_data.items():
         print(f"  {impl}: {lat:.2f} ms")
     
-    print("\nAverage Tokens per Second:")
+    print("\nMedian Tokens per Second:")
     for impl, tps in tps_data.items():
         print(f"  {impl}: {tps:.2f}")
     
+    # Print TTFT data if available
+    if not avg_ttft_data.empty:
+        print("\nMedian Time to First Token (ms):")
+        for impl, ttft in avg_ttft_data.items():
+            print(f"  {impl}: {ttft:.2f} ms")
+        
+        print("\nMaximum Time to First Token (ms):")
+        for impl, ttft in max_ttft_data.items():
+            print(f"  {impl}: {ttft:.2f} ms")
+    
     print(f"\nCharts saved to: {output_dir}")
-    print(f"  - {os.path.basename(accuracy_chart_path)}")
+    # print(f"  - {os.path.basename(accuracy_chart_path)}")
     print(f"  - {os.path.basename(latency_chart_path)}")
     print(f"  - {os.path.basename(tps_chart_path)}")
+    
+    if ttft_chart_path:
+        print(f"  - {os.path.basename(ttft_chart_path)}")
+    if max_ttft_chart_path:
+        print(f"  - {os.path.basename(max_ttft_chart_path)}")
+    
     print(f"Summary saved to: {os.path.basename(summary_path)}")
 
 def main():

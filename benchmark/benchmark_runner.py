@@ -34,7 +34,7 @@ class BenchmarkTest:
 class BenchmarkResult:
     def __init__(self, test: BenchmarkTest, implementation: str, response: str, 
                  latency_ms: float, tokens_per_second: float, success: bool = True, 
-                 error: str = None):
+                 error: str = None, time_to_first_token: float = None):
         self.test_id = test.id
         self.prompt = test.prompt
         self.implementation = implementation
@@ -44,6 +44,7 @@ class BenchmarkResult:
         self.success = success
         self.error = error
         self.timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.time_to_first_token = time_to_first_token
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -55,7 +56,8 @@ class BenchmarkResult:
             "tokens_per_second": self.tokens_per_second,
             "success": self.success,
             "error": self.error,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
+            "time_to_first_token": self.time_to_first_token
         }
 
 class BenchmarkRunner:
@@ -88,17 +90,18 @@ class BenchmarkRunner:
         
         Args:
             implementation_name: Name of the implementation (e.g., "ollama", "webllm")
-            inference_fn: A function that takes a BenchmarkTest and returns (response, latency_ms, tokens_per_second)
+            inference_fn: A function that takes a BenchmarkTest and returns (response, latency_ms, tokens_per_second, time_to_first_token)
         """
         for test in self.tests:
             try:
-                response, latency_ms, tokens_per_second = inference_fn(test)
+                response, latency_ms, tokens_per_second, time_to_first_token = inference_fn(test)
                 result = BenchmarkResult(
                     test=test,
                     implementation=implementation_name,
                     response=response,
                     latency_ms=latency_ms,
-                    tokens_per_second=tokens_per_second
+                    tokens_per_second=tokens_per_second,
+                    time_to_first_token=time_to_first_token
                 )
             except Exception as e:
                 result = BenchmarkResult(
@@ -107,6 +110,7 @@ class BenchmarkRunner:
                     response="",
                     latency_ms=0,
                     tokens_per_second=0,
+                    time_to_first_token=0,
                     success=False,
                     error=str(e)
                 )
@@ -121,13 +125,13 @@ class BenchmarkRunner:
         Args:
             implementation_name: Name of the implementation (e.g., "webllm")
             batch_inference_fn: A function that takes a list of BenchmarkTest objects and returns
-                                a list of (response, latency_ms, tokens_per_second) tuples
+                                a list of (response, latency_ms, tokens_per_second, time_to_first_token) tuples
         """
         try:
             batch_results = batch_inference_fn(self.tests)
             
             # Process the batch results
-            for i, (response, latency_ms, tokens_per_second) in enumerate(batch_results):
+            for i, (response, latency_ms, tokens_per_second, time_to_first_token) in enumerate(batch_results):
                 if i < len(self.tests):  # Ensure we have a test for this result
                     test = self.tests[i]
                     result = BenchmarkResult(
@@ -136,6 +140,7 @@ class BenchmarkRunner:
                         response=response,
                         latency_ms=latency_ms,
                         tokens_per_second=tokens_per_second,
+                        time_to_first_token=time_to_first_token,
                         success=True if latency_ms > 0 else False
                     )
                     self.results.append(result)
@@ -149,6 +154,7 @@ class BenchmarkRunner:
                     response="",
                     latency_ms=0,
                     tokens_per_second=0,
+                    time_to_first_token=0,
                     success=False,
                     error=str(e)
                 )
@@ -192,19 +198,19 @@ def main():
     runner = BenchmarkRunner(args.test_file)
     
     if args.implementation == InferenceFramework.OLLAMA:
-        from ollama.run_benchmark import run_ollama_benchmark
+        from local.ollama.run_benchmark import run_ollama_benchmark
         runner.run_benchmarks(InferenceFramework.OLLAMA.value, run_ollama_benchmark)
     elif args.implementation == InferenceFramework.WEBLLM:
-        from webllm.run_benchmark import run_webllm_benchmark, run_webllm_benchmark_batch
+        from in_browser.webllm.run_benchmark import run_webllm_benchmark_batch
         # Use the batch version instead of individual test runs
         def run_batch_with_options(tests):
             return run_webllm_benchmark_batch(tests, debug=args.webllm_debug, force_visible=args.webllm_visible)
         runner.run_benchmarks_batch(InferenceFramework.WEBLLM.value, run_batch_with_options)
     elif args.implementation == InferenceFramework.LLAMACPP:
-        from llama_cpp.run_benchmark import run_llamacpp_benchmark
+        from local.llama_cpp.run_benchmark import run_llamacpp_benchmark
         runner.run_benchmarks(InferenceFramework.LLAMACPP.value, run_llamacpp_benchmark)
     elif args.implementation == InferenceFramework.OPENAI:
-        from open_ai.run_benchmark import run_openai_benchmark
+        from cloud.open_ai.run_benchmark import run_openai_benchmark
         runner.run_benchmarks(InferenceFramework.OPENAI.value, run_openai_benchmark)
     
     runner.save_results(InferenceFramework(args.implementation), args.output)
